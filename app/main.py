@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routes import health, items
+from app.routes import health, items, auth
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
 app.include_router(health.router, tags=["health"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(items.router, prefix="/items", tags=["items"])
 
 @app.on_event("startup")
