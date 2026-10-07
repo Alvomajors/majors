@@ -1,11 +1,10 @@
-from datetime import datetime, timedelta
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field
+from datetime import datetime, timedelta
+from typing import Optional
 
 from app.config import settings
 from app.database import get_database
@@ -14,17 +13,25 @@ router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3)
     password: str = Field(..., min_length=6)
+
 
 class UserOut(BaseModel):
     id: str
     username: str
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
 
 def hash_password(password: str) -> str:
@@ -37,13 +44,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
@@ -74,13 +77,12 @@ async def register_user(user: UserCreate):
     if await db.users.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    user_data = {
+    created = await db.users.insert_one({
         "username": user.username,
         "password": hash_password(user.password),
-    }
-    result = await db.users.insert_one(user_data)
-    created = await db.users.find_one({"_id": result.inserted_id})
-    return UserOut(id=str(created["_id"]), username=created["username"])
+    })
+    saved_user = await db.users.find_one({"_id": created.inserted_id})
+    return UserOut(id=str(saved_user["_id"]), username=saved_user["username"])
 
 
 @router.post("/login", response_model=Token)
@@ -90,7 +92,7 @@ async def login_user(form_data: OAuth2PasswordRequestForm = Depends()):
     if not user or not verify_password(form_data.password, user["password"]):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-    access_token = create_access_token(data={"sub": user["username"]})
+    access_token = create_access_token({"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
