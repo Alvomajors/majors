@@ -77,11 +77,11 @@ async def register_user(user: UserCreate):
     if await db.users.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    created = await db.users.insert_one({
+    inserted = await db.users.insert_one({
         "username": user.username,
         "password": hash_password(user.password),
     })
-    saved_user = await db.users.find_one({"_id": created.inserted_id})
+    saved_user = await db.users.find_one({"_id": inserted.inserted_id})
     return UserOut(id=str(saved_user["_id"]), username=saved_user["username"])
 
 

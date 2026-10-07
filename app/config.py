@@ -11,5 +11,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     ethereum_rpc_url: str = "http://localhost:8545"
 
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
 
 settings = Settings()
