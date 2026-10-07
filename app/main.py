@@ -1,0 +1,21 @@
+from fastapi import FastAPI
+from app.config import settings
+from app.database import connect_to_mongo, close_mongo_connection
+from app.routes import health, items
+
+app = FastAPI(title=settings.app_name, version=settings.app_version)
+
+app.include_router(health.router, tags=["health"])
+app.include_router(items.router, prefix="/items", tags=["items"])
+
+@app.on_event("startup")
+async def startup_event():
+    await connect_to_mongo()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_mongo_connection()
+
+@app.get("/")
+async def root():
+    return {"message": f"Welcome to {settings.app_name}"}
