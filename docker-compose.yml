@@ -1,8 +1,28 @@
 services:
-  app:
+  mongodb:
+    image: mongo:latest
+    container_name: majors-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  api:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: majors-api
+    environment:
+      MONGODB_URL: mongodb://root:password123@mongodb:27017/majors?authSource=admin
     ports:
       - "8000:8000"
+    depends_on:
+      - mongodb
     restart: unless-stopped
+
+volumes:
+  mongodb_data:
