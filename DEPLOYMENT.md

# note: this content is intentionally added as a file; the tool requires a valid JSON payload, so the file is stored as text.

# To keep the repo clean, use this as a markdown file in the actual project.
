@@ -1,0 +1,65 @@
+# Production deployment checklist for Majors API
+
+## 1. Create production environment file
+
+Create `.env` locally and do not commit it:
+
+```env
+APP_NAME=Majors API
+APP_VERSION=1.0.0
+MONGODB_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/majors?retryWrites=true&w=majority
+DATABASE_NAME=majors
+SECRET_KEY=<very-long-random-secret>
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/<project-id>
+```
+
+## 2. MongoDB Atlas setup
+
+- Create a MongoDB Atlas cluster
+- Add a database user
+- Allow access from your deployment IP or use 0.0.0.0/0 if needed
+- Copy the Atlas connection string to `MONGODB_URL`
+
+## 3. Ethereum RPC setup
+
+Use Infura or Alchemy for production:
+
+- Infura: https://infura.io
+- Alchemy: https://www.alchemy.com
+
+Set your RPC URL in `ETHEREUM_RPC_URL`.
+
+## 4. Railway deployment
+
+1. Push repo to GitHub
+2. Open Railway
+3. Create new project
+4. Deploy from GitHub
+5. Add the environment variables above
+6. Use the repository Dockerfile for deployment
+
+## 5. Health checks
+
+The app exposes a health check endpoint:
+
+```text
+/health
+```
+
+## 6. Security rules
+
+- Never commit `.env`
+- Never store wallet private keys in the repo
+- Use strong JWT secrets
+- Use HTTPS in production
+- Restrict MongoDB network access
+- Keep Geth only for local development or private testnet usage
+
+## 7. Recommended prod architecture
+
+- API: Railway
+- DB: MongoDB Atlas
+- Blockchain: Infura/Alchemy managed RPC
+- Secrets: environment variables only
