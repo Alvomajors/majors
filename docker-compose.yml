@@ -1,52 +1,126 @@
-services:
-  mongodb:
-    image: mongo:latest
-    container_name: majors-mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: password123
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    restart: unless-stopped
+import os
+from typing import Any
 
-  geth:
-    image: ethereum/client-go:latest
-    container_name: majors-geth
-    command: >
-      --http
-      --http.addr 0.0.0.0
-      --http.vhosts "*"
-      --http.api eth,net,web3,txpool,personal,admin
-      --ws
-      --ws.addr 0.0.0.0
-      --ws.origins "*"
-      --rpcvhosts "*"
-      --syncmode full
-      --datadir /data
-    ports:
-      - "8545:8545"
-      - "8546:8546"
-    volumes:
-      - geth_data:/data
-    restart: unless-stopped
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from web3 import Web3
 
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: majors-api
-    environment:
-      MONGODB_URL: mongodb://root:password123@mongodb:27017/majors?authSource=admin
-      ETHEREUM_RPC_URL: http://geth:8545
-    ports:
-      - "8000:8000"
-    depends_on:
-      - mongodb
-      - geth
-    restart: unless-stopped
 
-volumes:
-  mongodb_data:
-  geth_data:
+router = APIRouter()
+
+w3 = Web3(Web3.HTTPProvider(os.getenv("ETHEREUM_RPC_URL", "http://localhost:8545")))
+
+
+class WalletCreateResponse(BaseModel):
+    address: str
+    private_key: str
+
+
+class TransactionRequest(BaseModel):
+    from_address: str = Field(..., description="Sender address")
+    to_address: str = Field(..., description="Recipient address")
+    value_ether: float = Field(..., gt=0, description="Ether amount to send")
+    private_key: str = Field(..., description="Private key for signing")
+
+
+class SignMessageRequest(BaseModel):
+    private_key: str = Field(..., description="Private key used to sign")
+    message: str = Field(..., description="Message to sign")
+
+
+class DeployContractRequest(BaseModel):
+    abi: list[Any] = Field(..., description="Contract ABI")
+    bytecode: str = Field(..., description="Compiled contract bytecode")
+    from_address: str = Field(..., description="Address deploying the contract")
+    private_key: str = Field(..., description="Private key for signing")
+    args: list[Any] = Field(default_factory=list, description="Constructor arguments")
+
+
+def ensure_rpc_connected():
+    if not w3.is_connected():
+        raise HTTPException(status_code=503, detail="Ethereum node is not reachable")
+
+
+@router.get("/network")
+def get_network():
+    ensure_rpc_connected()
+    return {
+        "connected": True,
+        "chain_id": w3.eth.chain_id,
+        "latest_block": w3.eth.block_number,
+    }
+
+
+@router.get("/accounts")
+def get_accounts():
+    ensure_rpc_connected()
+    return {"accounts": w3.eth.accounts}
+
+
+@router.post("/wallet/create", response_model=WalletCreateResponse)
+def create_wallet():
+    account = w3.eth.account.create()
+    return {
+        "address": account.address,
+        "private_key": account.key.hex(),
+    }
+
+
+@router.post("/wallet/send-transaction")
+def send_transaction(payload: TransactionRequest):
+    ensure_rpc_connected()
+
+    value_wei = w3.to_wei(payload.value_ether, "ether")
+    tx = {
+        "chainId": w3.eth.chain_id,
+        "from": payload.from_address,
+        "to": payload.to_address,
+        "value": value_wei,
+        "gas": 21000,
+        "gasPrice": w3.eth.gas_price,
+        "nonce": w3.eth.get_transaction_count(payload.from_address),
+    }
+
+    signed_tx = w3.eth.account.sign_transaction(tx, payload.private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    return {
+        "transaction_hash": tx_hash.hex(),
+        "status": "submitted",
+    }
+
+
+@router.post("/wallet/sign-message")
+def sign_message(payload: SignMessageRequest):
+    account = w3.eth.account.from_key(payload.private_key)
+    signed = account.sign_message(payload.message.encode("utf-8"))
+    return {
+        "address": account.address,
+        "signature": signed.signature.hex(),
+        "message": payload.message,
+    }
+
+
+@router.post("/contract/deploy")
+def deploy_contract(payload: DeployContractRequest):
+    ensure_rpc_connected()
+
+    contract = w3.eth.contract(abi=payload.abi, bytecode=payload.bytecode)
+    tx = contract.constructor(*payload.args).build_transaction({
+        "from": payload.from_address,
+        "gas": 3000000,
+        "gasPrice": w3.eth.gas_price,
+        "nonce": w3.eth.get_transaction_count(payload.from_address),
+        "chainId": w3.eth.chain_id,
+    })
+
+    signed_tx = w3.eth.account.sign_transaction(tx, payload.private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    return {
+        "transaction_hash": tx_hash.hex(),
+        "contract_address": tx_receipt["contractAddress"],
+        "status": tx_receipt["status"],
+    }
+
+
+blockchain_router = router
