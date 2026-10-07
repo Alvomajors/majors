@@ -11,13 +11,16 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(items.router, prefix="/items", tags=["items"])
 app.include_router(blockchain_router, prefix="/blockchain", tags=["blockchain"])
 
+
 @app.on_event("startup")
 async def startup_event():
     await connect_to_mongo()
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_mongo_connection()
+
 
 @app.get("/")
 async def root():
