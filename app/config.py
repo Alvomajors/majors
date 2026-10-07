@@ -8,5 +8,6 @@ class Settings(BaseSettings):
     secret_key: str = "super-secret-key-change-this"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    ethereum_rpc_url: str = "http://localhost:8545"
 
 settings = Settings()
